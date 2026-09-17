@@ -1,0 +1,126 @@
+from Bio import AlignIO
+from Bio.Align import PairwiseAligner
+from Bio.Align import substitution_matrices
+
+
+# ============================================================
+# FILE
+# ============================================================
+
+stockholm_file = r"C:\Users\User\Downloads\PF02932.alignment.seed"
+
+
+# ============================================================
+# READ STOCKHOLM MSA
+# ============================================================
+
+alignments = AlignIO.parse(stockholm_file, "stockholm")
+
+alignment = next(alignments)
+
+# ============================================================
+# SET UP GLOBAL PAIRWISE ALIGNMENT
+# ============================================================
+
+aligner = PairwiseAligner()
+
+aligner.mode = "global"
+
+aligner.substitution_matrix = substitution_matrices.load("BLOSUM62")
+
+aligner.open_gap_score = -10
+aligner.extend_gap_score = -0.5
+
+
+# ============================================================
+# REFERENCE = FIRST SEQUENCE
+# ============================================================
+
+reference = alignment[0]
+
+reference_seq = (
+    str(reference.seq)
+    .replace("-", "")
+    .replace(".", "")
+)
+
+
+print("\nREFERENCE SEQUENCE")
+print("=" * 80)
+
+print("Reference ID:", reference.id)
+print("Ungapped sequence length:", len(reference_seq))
+
+
+# ============================================================
+# PAIRWISE COMPARISONS
+# ============================================================
+
+for number, target in enumerate(alignment[1:], start=1):
+
+    target_seq = (
+        str(target.seq)
+        .replace("-", "")
+        .replace(".", "")
+    )
+
+    pairwise_results = aligner.align(
+        reference_seq,
+        target_seq
+    )
+
+    best_alignment = pairwise_results[0]
+
+
+    # Identity statistics
+    counts = best_alignment.counts()
+
+    identities = counts.identities
+    mismatches = counts.mismatches
+
+    compared_positions = identities + mismatches
+
+    if compared_positions > 0:
+        percent_identity = (
+            identities /
+            compared_positions
+        ) * 100
+    else:
+        percent_identity = 0
+
+
+    print("\n" + "=" * 80)
+
+    print(
+        f"PAIRWISE COMPARISON {number} "
+        f"OF {len(alignment) - 1}"
+    )
+
+    print("=" * 80)
+
+    print("Reference:", reference.id)
+    print("Target:   ", target.id)
+
+    print(
+        "Reference length:",
+        len(reference_seq)
+    )
+
+    print(
+        "Target length:",
+        len(target_seq)
+    )
+
+    print(
+        "Alignment score:",
+        best_alignment.score
+    )
+
+    print(
+        f"Percent identity: "
+        f"{percent_identity:.2f}%"
+    )
+
+    print()
+
+    print(best_alignment)
