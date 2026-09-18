@@ -1,0 +1,393 @@
+# ============================================================
+# BARD1 PAIRWISE SEQUENCE ALIGNMENT
+# ============================================================
+
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.Align import PairwiseAligner
+from Bio.Align import substitution_matrices
+
+
+# ============================================================
+# 1. INPUT FILE
+# ============================================================
+
+bard1_file = r"C:\Users\User\Downloads\BARD1_seq.txt"
+
+
+# ============================================================
+# 2. READ ALL SEQUENCES
+# ============================================================
+
+records = list(
+    SeqIO.parse(bard1_file, "fasta")
+)
+
+print("Number of sequences:", len(records))
+
+
+# ============================================================
+# 3. REMOVE OLD ALIGNMENT GAPS
+#    AND CONVERT TO UPPERCASE
+# ============================================================
+
+ungapped_records = []
+
+for record in records:
+
+    ungapped_seq = (
+        str(record.seq)
+        .replace("-", "")
+        .replace(".", "")
+        .upper()
+    )
+
+    cleaned_record = SeqRecord(
+        Seq(ungapped_seq),
+        id=record.id,
+        description=""
+    )
+
+    ungapped_records.append(cleaned_record)
+
+
+# ============================================================
+# 4. LOAD BLOSUM62
+# ============================================================
+
+matrix = substitution_matrices.load("BLOSUM62")
+
+allowed_letters = set(matrix.alphabet)
+
+
+# ============================================================
+# 5. CHECK FOR UNSUPPORTED CHARACTERS
+# ============================================================
+
+print("\nChecking amino-acid characters...")
+
+problems_found = False
+
+for record in ungapped_records:
+
+    invalid_letters = (
+        set(str(record.seq))
+        - allowed_letters
+    )
+
+    if invalid_letters:
+
+        problems_found = True
+
+        print(
+            record.id,
+            "contains unsupported characters:",
+            invalid_letters
+        )
+
+
+if not problems_found:
+    print("All sequence characters are supported by BLOSUM62.")
+
+
+# ============================================================
+# 6. SET UP GLOBAL PAIRWISE ALIGNMENT
+# ============================================================
+
+aligner = PairwiseAligner()
+
+# Global alignment compares the full sequence regions
+aligner.mode = "global"
+
+# Protein substitution matrix
+aligner.substitution_matrix = matrix
+
+# Gap penalties
+aligner.open_gap_score = -10
+aligner.extend_gap_score = -0.5
+
+
+# ============================================================
+# 7. CHOOSE FIRST SEQUENCE AS REFERENCE
+# ============================================================
+
+reference_record = ungapped_records[0]
+
+reference_seq = str(
+    reference_record.seq
+)
+
+print("\n" + "=" * 80)
+print("REFERENCE SEQUENCE")
+print("=" * 80)
+
+print(
+    "Reference ID:",
+    reference_record.id
+)
+
+print(
+    "Reference length:",
+    len(reference_seq)
+)
+
+print(
+    "Number of pairwise comparisons:",
+    len(ungapped_records) - 1
+)
+
+
+# ============================================================
+# 8. VARIABLES TO STORE BEST RESULTS
+# ============================================================
+
+# Highest alignment score
+highest_score = float("-inf")
+highest_score_target = None
+highest_score_identity = 0
+highest_score_alignment = None
+
+
+# Highest percent identity
+highest_identity = float("-inf")
+highest_identity_target = None
+highest_identity_score = None
+highest_identity_alignment = None
+
+
+# ============================================================
+# 9. PAIRWISE ALIGN REFERENCE AGAINST ALL OTHER SEQUENCES
+# ============================================================
+
+for number, target_record in enumerate(
+    ungapped_records[1:],
+    start=1
+):
+
+    target_seq = str(
+        target_record.seq
+    )
+
+
+    # --------------------------------------------------------
+    # Perform pairwise alignment
+    # --------------------------------------------------------
+
+    alignments = aligner.align(
+        reference_seq,
+        target_seq
+    )
+
+
+    # The first alignment is the highest-scoring alignment
+    best_alignment = alignments[0]
+
+
+    # --------------------------------------------------------
+    # Calculate percent identity
+    # --------------------------------------------------------
+
+    counts = best_alignment.counts()
+
+    identities = counts.identities
+    mismatches = counts.mismatches
+
+    compared_positions = (
+        identities
+        + mismatches
+    )
+
+
+    if compared_positions > 0:
+
+        percent_identity = (
+            identities
+            / compared_positions
+        ) * 100
+
+    else:
+
+        percent_identity = 0
+
+
+    # --------------------------------------------------------
+    # Print current pairwise result
+    # --------------------------------------------------------
+
+    print("\n" + "=" * 80)
+
+    print(
+        f"PAIRWISE COMPARISON "
+        f"{number} OF "
+        f"{len(ungapped_records) - 1}"
+    )
+
+    print("=" * 80)
+
+    print(
+        "Reference:",
+        reference_record.id
+    )
+
+    print(
+        "Target:",
+        target_record.id
+    )
+
+    print(
+        "Reference length:",
+        len(reference_seq)
+    )
+
+    print(
+        "Target length:",
+        len(target_seq)
+    )
+
+    print(
+        "Alignment score:",
+        best_alignment.score
+    )
+
+    print(
+        "Identical positions:",
+        identities
+    )
+
+    print(
+        "Mismatches:",
+        mismatches
+    )
+
+    print(
+        f"Percent identity: "
+        f"{percent_identity:.2f}%"
+    )
+
+    print("\nAlignment:")
+
+    print(best_alignment)
+
+
+    # ========================================================
+    # 10. CHECK FOR HIGHEST ALIGNMENT SCORE
+    # ========================================================
+
+    if best_alignment.score > highest_score:
+
+        highest_score = best_alignment.score
+
+        highest_score_target = (
+            target_record.id
+        )
+
+        highest_score_identity = (
+            percent_identity
+        )
+
+        highest_score_alignment = (
+            best_alignment
+        )
+
+
+    # ========================================================
+    # 11. CHECK FOR HIGHEST PERCENT IDENTITY
+    # ========================================================
+
+    if percent_identity > highest_identity:
+
+        highest_identity = (
+            percent_identity
+        )
+
+        highest_identity_target = (
+            target_record.id
+        )
+
+        highest_identity_score = (
+            best_alignment.score
+        )
+
+        highest_identity_alignment = (
+            best_alignment
+        )
+
+
+# ============================================================
+# 12. FINAL SUMMARY
+# ============================================================
+
+print("\n\n")
+print("#" * 80)
+print("FINAL PAIRWISE ALIGNMENT SUMMARY")
+print("#" * 80)
+
+
+# ------------------------------------------------------------
+# Highest alignment score
+# ------------------------------------------------------------
+
+print("\nHIGHEST-SCORING SEQUENCE")
+print("=" * 80)
+
+print(
+    "Reference:",
+    reference_record.id
+)
+
+print(
+    "Best target:",
+    highest_score_target
+)
+
+print(
+    "Highest alignment score:",
+    highest_score
+)
+
+print(
+    f"Percent identity: "
+    f"{highest_score_identity:.2f}%"
+)
+
+print("\nBest alignment:")
+
+print(
+    highest_score_alignment
+)
+
+
+# ------------------------------------------------------------
+# Highest percent identity
+# ------------------------------------------------------------
+
+print("\n" + "=" * 80)
+print("HIGHEST PERCENT IDENTITY")
+print("=" * 80)
+
+print(
+    "Reference:",
+    reference_record.id
+)
+
+print(
+    "Best target:",
+    highest_identity_target
+)
+
+print(
+    f"Highest percent identity: "
+    f"{highest_identity:.2f}%"
+)
+
+print(
+    "Alignment score:",
+    highest_identity_score
+)
+
+print("\nBest alignment:")
+
+print(
+    highest_identity_alignment
+)
