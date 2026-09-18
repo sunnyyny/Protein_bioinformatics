@@ -1,10 +1,12 @@
 # ============================================================
-# BARD1 MULTIPLE SEQUENCE ALIGNMENT WITH CLUSTALW
+# BARD1 DOMAIN-FOCUSED MULTIPLE SEQUENCE ALIGNMENT
 # ============================================================
 
 from Bio import SeqIO, AlignIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from Bio.Align import PairwiseAligner
+from Bio.Align import substitution_matrices
 import subprocess
 
 
@@ -16,7 +18,7 @@ bard1_file = r"C:\Users\User\Downloads\BARD1_seq.txt"
 
 
 # ============================================================
-# 2. READ ALL BARD1 SEQUENCES
+# 2. READ ORIGINAL SEQUENCES
 # ============================================================
 
 records = list(
@@ -28,71 +30,179 @@ print("Number of sequences:", len(records))
 
 # ============================================================
 # 3. REMOVE OLD ALIGNMENT GAPS
-#    AND CONVERT TO UPPERCASE
 # ============================================================
 
-ungapped_records = []
+cleaned_records = []
 
 for record in records:
 
-    ungapped_seq = (
+    cleaned_seq = (
         str(record.seq)
         .replace("-", "")
         .replace(".", "")
         .upper()
     )
 
-    cleaned_record = SeqRecord(
-        Seq(ungapped_seq),
-        id=record.id,
-        description=""
+    cleaned_records.append(
+        SeqRecord(
+            Seq(cleaned_seq),
+            id=record.id,
+            description=""
+        )
     )
 
-    ungapped_records.append(cleaned_record)
+
+# ============================================================
+# 4. SET UP LOCAL ALIGNER
+# ============================================================
+
+matrix = substitution_matrices.load("BLOSUM62")
+
+aligner = PairwiseAligner()
+
+aligner.mode = "local"
+
+aligner.substitution_matrix = matrix
+
+aligner.open_gap_score = -10
+aligner.extend_gap_score = -0.5
 
 
-print(
-    "Number of cleaned sequences:",
-    len(ungapped_records)
+# ============================================================
+# 5. FIRST SEQUENCE = DOMAIN REFERENCE
+# ============================================================
+
+reference_record = cleaned_records[0]
+
+reference_seq = str(
+    reference_record.seq
+)
+
+print("\nReference:", reference_record.id)
+print("Reference length:", len(reference_seq))
+
+
+# ============================================================
+# 6. CREATE LIST OF HOMOLOGOUS REGIONS
+# ============================================================
+
+domain_records = []
+
+
+# ------------------------------------------------------------
+# First record:
+# keep the reference itself
+# ------------------------------------------------------------
+
+domain_records.append(
+    SeqRecord(
+        Seq(reference_seq),
+        id=reference_record.id,
+        description="reference"
+    )
 )
 
 
+# ------------------------------------------------------------
+# Other sequences:
+# use local alignment to locate homologous region
+# ------------------------------------------------------------
+
+for target_record in cleaned_records[1:]:
+
+    target_seq = str(
+        target_record.seq
+    )
+
+    alignments = aligner.align(
+        reference_seq,
+        target_seq
+    )
+
+    best = alignments[0]
+
+
+    # --------------------------------------------------------
+    # Obtain aligned blocks in the target
+    # --------------------------------------------------------
+
+    target_blocks = best.aligned[1]
+
+
+    # Beginning of first homologous block
+    target_start = min(
+        block[0]
+        for block in target_blocks
+    )
+
+
+    # End of last homologous block
+    target_end = max(
+        block[1]
+        for block in target_blocks
+    )
+
+
+    # --------------------------------------------------------
+    # Extract the continuous homologous region
+    # --------------------------------------------------------
+
+    domain_seq = target_seq[
+        target_start:target_end
+    ]
+
+
+    domain_records.append(
+        SeqRecord(
+            Seq(domain_seq),
+            id=target_record.id,
+            description=(
+                f"local_region_"
+                f"{target_start + 1}-{target_end}"
+            )
+        )
+    )
+
+
+    print(
+        target_record.id,
+        "extracted region:",
+        f"{target_start + 1}-{target_end}",
+        "length:",
+        len(domain_seq)
+    )
+
+
 # ============================================================
-# 4. WRITE UNGAPPED SEQUENCES TO A NEW FASTA FILE
+# 7. WRITE DOMAIN-ONLY FASTA
 # ============================================================
 
-unaligned_file = (
-    r"C:\Users\User\Downloads\BARD1_unaligned.fasta"
+domain_fasta = (
+    r"C:\Users\User\Downloads\BARD1_domain_regions.fasta"
 )
 
 SeqIO.write(
-    ungapped_records,
-    unaligned_file,
+    domain_records,
+    domain_fasta,
     "fasta"
 )
 
-print(
-    "\nUngapped FASTA file created:"
-)
+print("\nDomain FASTA created:")
+print(domain_fasta)
 
 print(
-    unaligned_file
+    "Number of extracted sequences:",
+    len(domain_records)
 )
 
 
 # ============================================================
-# 5. RUN CLUSTALW THROUGH WSL
+# 8. RUN CLUSTALW THROUGH WSL
 # ============================================================
 
-# Windows sees:
-# C:\Users\User\Downloads\BARD1_unaligned.fasta
-#
-# WSL sees:
-# /mnt/c/Users/User/Downloads/BARD1_unaligned.fasta
-
-wsl_fasta_file = (
+wsl_domain_fasta = (
     "/mnt/c/Users/User/Downloads/"
-    "BARD1_unaligned.fasta"
+    "BARD1_domain_regions.fasta"
 )
 
 print("\nRunning ClustalW...")
@@ -104,81 +214,62 @@ subprocess.run(
         "-lc",
         f"source ~/miniconda3/etc/profile.d/conda.sh && "
         f"conda activate proteinbio && "
-        f"clustalw2 -INFILE={wsl_fasta_file}"
+        f"clustalw2 -INFILE={wsl_domain_fasta}"
     ],
     check=True
 )
 
-print("\nClustalW finished successfully.")
+print("ClustalW finished.")
 
 
 # ============================================================
-# 6. READ THE NEW CLUSTALW ALIGNMENT
+# 9. READ NEW DOMAIN-FOCUSED MSA
 # ============================================================
 
-new_alignment_file = (
-    r"C:\Users\User\Downloads\BARD1_unaligned.aln"
+msa_file = (
+    r"C:\Users\User\Downloads\BARD1_domain_regions.aln"
 )
 
-new_alignment = AlignIO.read(
-    new_alignment_file,
+msa = AlignIO.read(
+    msa_file,
     "clustal"
 )
 
 
 # ============================================================
-# 7. PRINT THE NEW MSA
+# 10. PRINT FINAL MSA INFORMATION
 # ============================================================
 
 print("\n" + "=" * 80)
-print("NEW BARD1 CLUSTALW MULTIPLE SEQUENCE ALIGNMENT")
+print("BARD1 DOMAIN-FOCUSED MSA")
 print("=" * 80)
 
-print(new_alignment)
+print(msa)
 
 print(
     "\nNumber of sequences:",
-    len(new_alignment)
+    len(msa)
 )
 
 print(
     "Alignment length:",
-    new_alignment.get_alignment_length()
+    msa.get_alignment_length()
 )
 
 
 # ============================================================
-# 8. PRINT EACH ALIGNED SEQUENCE ID
+# 11. SAVE FINAL MSA
 # ============================================================
 
-print("\nAligned sequence IDs:")
-print("=" * 80)
-
-for record in new_alignment:
-
-    print(
-        record.id
-    )
-
-
-# ============================================================
-# 9. OPTIONAL: SAVE A COPY OF THE NEW ALIGNMENT
-# ============================================================
-
-output_copy = (
-    r"C:\Users\User\Downloads\BARD1_final_MSA.aln"
+final_output = (
+    r"C:\Users\User\Downloads\BARD1_final_domain_MSA.aln"
 )
 
 AlignIO.write(
-    new_alignment,
-    output_copy,
+    msa,
+    final_output,
     "clustal"
 )
 
-print(
-    "\nFinal alignment saved as:"
-)
-
-print(
-    output_copy
-)
+print("\nFinal MSA saved as:")
+print(final_output)
