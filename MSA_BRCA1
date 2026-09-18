@@ -1,0 +1,184 @@
+# ============================================================
+# BARD1 MULTIPLE SEQUENCE ALIGNMENT WITH CLUSTALW
+# ============================================================
+
+from Bio import SeqIO, AlignIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+import subprocess
+
+
+# ============================================================
+# 1. INPUT FILE
+# ============================================================
+
+bard1_file = r"C:\Users\User\Downloads\BARD1_seq.txt"
+
+
+# ============================================================
+# 2. READ ALL BARD1 SEQUENCES
+# ============================================================
+
+records = list(
+    SeqIO.parse(bard1_file, "fasta")
+)
+
+print("Number of sequences:", len(records))
+
+
+# ============================================================
+# 3. REMOVE OLD ALIGNMENT GAPS
+#    AND CONVERT TO UPPERCASE
+# ============================================================
+
+ungapped_records = []
+
+for record in records:
+
+    ungapped_seq = (
+        str(record.seq)
+        .replace("-", "")
+        .replace(".", "")
+        .upper()
+    )
+
+    cleaned_record = SeqRecord(
+        Seq(ungapped_seq),
+        id=record.id,
+        description=""
+    )
+
+    ungapped_records.append(cleaned_record)
+
+
+print(
+    "Number of cleaned sequences:",
+    len(ungapped_records)
+)
+
+
+# ============================================================
+# 4. WRITE UNGAPPED SEQUENCES TO A NEW FASTA FILE
+# ============================================================
+
+unaligned_file = (
+    r"C:\Users\User\Downloads\BARD1_unaligned.fasta"
+)
+
+SeqIO.write(
+    ungapped_records,
+    unaligned_file,
+    "fasta"
+)
+
+print(
+    "\nUngapped FASTA file created:"
+)
+
+print(
+    unaligned_file
+)
+
+
+# ============================================================
+# 5. RUN CLUSTALW THROUGH WSL
+# ============================================================
+
+# Windows sees:
+# C:\Users\User\Downloads\BARD1_unaligned.fasta
+#
+# WSL sees:
+# /mnt/c/Users/User/Downloads/BARD1_unaligned.fasta
+
+wsl_fasta_file = (
+    "/mnt/c/Users/User/Downloads/"
+    "BARD1_unaligned.fasta"
+)
+
+print("\nRunning ClustalW...")
+
+subprocess.run(
+    [
+        "wsl",
+        "bash",
+        "-lc",
+        f"source ~/miniconda3/etc/profile.d/conda.sh && "
+        f"conda activate proteinbio && "
+        f"clustalw2 -INFILE={wsl_fasta_file}"
+    ],
+    check=True
+)
+
+print("\nClustalW finished successfully.")
+
+
+# ============================================================
+# 6. READ THE NEW CLUSTALW ALIGNMENT
+# ============================================================
+
+new_alignment_file = (
+    r"C:\Users\User\Downloads\BARD1_unaligned.aln"
+)
+
+new_alignment = AlignIO.read(
+    new_alignment_file,
+    "clustal"
+)
+
+
+# ============================================================
+# 7. PRINT THE NEW MSA
+# ============================================================
+
+print("\n" + "=" * 80)
+print("NEW BARD1 CLUSTALW MULTIPLE SEQUENCE ALIGNMENT")
+print("=" * 80)
+
+print(new_alignment)
+
+print(
+    "\nNumber of sequences:",
+    len(new_alignment)
+)
+
+print(
+    "Alignment length:",
+    new_alignment.get_alignment_length()
+)
+
+
+# ============================================================
+# 8. PRINT EACH ALIGNED SEQUENCE ID
+# ============================================================
+
+print("\nAligned sequence IDs:")
+print("=" * 80)
+
+for record in new_alignment:
+
+    print(
+        record.id
+    )
+
+
+# ============================================================
+# 9. OPTIONAL: SAVE A COPY OF THE NEW ALIGNMENT
+# ============================================================
+
+output_copy = (
+    r"C:\Users\User\Downloads\BARD1_final_MSA.aln"
+)
+
+AlignIO.write(
+    new_alignment,
+    output_copy,
+    "clustal"
+)
+
+print(
+    "\nFinal alignment saved as:"
+)
+
+print(
+    output_copy
+)
