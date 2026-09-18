@@ -1,0 +1,114 @@
+from Bio import AlignIO, SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+import subprocess
+
+
+# --------------------------------------------------
+# 1. Read original Stockholm alignment
+# --------------------------------------------------
+
+stockholm_file = r"C:\Users\User\Downloads\PF02932.alignment.seed"
+
+alignment = next(
+    AlignIO.parse(stockholm_file, "stockholm")
+)
+
+print("Original alignment")
+print("Number of sequences:", len(alignment))
+print("Alignment length:", alignment.get_alignment_length())
+
+
+# --------------------------------------------------
+# 2. Remove old alignment gaps
+# --------------------------------------------------
+
+ungapped_records = []
+
+for record in alignment:
+
+    ungapped_seq = (
+        str(record.seq)
+        .replace("-", "")
+        .replace(".", "")
+    )
+
+    ungapped_records.append(
+        SeqRecord(
+            Seq(ungapped_seq),
+            id=record.id,
+            description=""
+        )
+    )
+
+
+# --------------------------------------------------
+# 3. Write unaligned FASTA
+# --------------------------------------------------
+
+fasta_file = r"C:\Users\User\Downloads\PF02932_unaligned.fasta"
+
+SeqIO.write(
+    ungapped_records,
+    fasta_file,
+    "fasta"
+)
+
+print("Ungapped FASTA created")
+
+
+# --------------------------------------------------
+# 4. Run ClustalW inside WSL
+# --------------------------------------------------
+
+# Windows path:
+# C:\Users\User\Downloads\PF02932_unaligned.fasta
+#
+# WSL sees this as:
+# /mnt/c/Users/User/Downloads/PF02932_unaligned.fasta
+
+wsl_fasta_file = "/mnt/c/Users/User/Downloads/PF02932_unaligned.fasta"
+
+subprocess.run(
+    [
+        "wsl",
+        "bash",
+        "-lc",
+        f"source ~/miniconda3/etc/profile.d/conda.sh && "
+        f"conda activate proteinbio && "
+        f"clustalw2 -INFILE={wsl_fasta_file}"
+    ],
+    check=True
+)
+
+
+# --------------------------------------------------
+# 5. Read newly generated ClustalW alignment
+# --------------------------------------------------
+
+new_alignment_file = r"C:\Users\User\Downloads\PF02932_unaligned.aln"
+
+new_alignment = AlignIO.read(
+    new_alignment_file,
+    "clustal"
+)
+
+
+# --------------------------------------------------
+# 6. Print new MSA
+# --------------------------------------------------
+
+print("\nNEW CLUSTALW ALIGNMENT")
+print("=" * 80)
+
+print(new_alignment)
+
+print(
+    "\nNumber of sequences:",
+    len(new_alignment)
+)
+
+print(
+    "New alignment length:",
+    new_alignment.get_alignment_length()
+)
